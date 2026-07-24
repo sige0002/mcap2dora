@@ -57,6 +57,37 @@ docker run --rm -e http_proxy -e https_proxy -e no_proxy \
   など)を行う
 - 変換の実行自体はネットワークアクセス不要なので、`docker run` にプロキシ設定は不要
 
+## ライブラリとして使う(in-memory batch)
+
+ファイルを書かずに、mcapをデコードした `RecordBatch` をメモリ上でそのまま
+受け取れる。dora ノードに組み込む場合はこちらを使う(`send_output` に直接
+渡せるので、ディスク往復が不要):
+
+```toml
+[dependencies]
+mcap2dora = { git = "https://github.com/sige0002/mcap2dora" }
+```
+
+```rust
+use mcap2dora::{map_file, McapArrowReader, Mode, ReaderOptions};
+
+let mapped = map_file(std::path::Path::new("bag_0.mcap"))?;
+let mut reader = McapArrowReader::new(&mapped, ReaderOptions {
+    mode: Mode::Decoded,
+    ..Default::default()
+})?;
+while let Some(tb) = reader.next_batch()? {
+    // tb.topic / tb.msg_type / tb.batch (arrow::record_batch::RecordBatch)
+    // → そのまま dora の send_output へ
+}
+println!("{:?}", reader.stats()); // messages / fallback / failed の内訳
+```
+
+- バッチ粒度は `max_batch_rows` / `max_batch_bytes` で調整(デフォルト 65536行 / 64MB)
+- トピック内のバッチはメッセージ順、トピック間はフラッシュ順で混ざる
+  (各行に `log_time` / `publish_time` 列があるので時刻順の再生はそれを使う)
+- CLI の `convert` はこのAPIの出力をArrow IPCファイルに書くだけの薄いラッパ
+
 ## 任意のrosbagを変換する
 
 mcapファイルを1つ指定すると、トピックごとの `.arrow` を出力ディレクトリに書く。
@@ -96,12 +127,19 @@ ROS 2 bag 33個・計29.1GB・221万メッセージを1台(20コア、NVMe)で�
 
 | モード | 合計時間 | スループット |
 |---|---:|---:|
-| raw | 37.1s | 785 MB/s |
-| decoded | 36.3s | 803 MB/s |
+| raw(ファイル出力) | 37.1s | 785 MB/s |
+| decoded(ファイル出力) | 36.3s | 803 MB/s |
 
 データ量の大半を占める圧縮画像はどちらのモードでもバイト列コピーになるため、
 フィールド展開のコストは誤差範囲で **raw と decoded はほぼ同速**。型付き列が
 得られる decoded を推奨。
+
+書き出しを省いた in-memory 変換(`drain` サブコマンド、ライブラリ利用時と同じ
+経路)は約2.2倍速く、780MB・25万メッセージのbagで **約1750 MB/s**(0.45秒):
+
+```bash
+docker run --rm -v /path/to/rosbags:/data:ro mcap2dora drain --mode decoded /data/xxx.mcap
+```
 
 ## 出力フォーマット
 

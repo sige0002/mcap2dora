@@ -1,0 +1,14 @@
+[package]
+name = "mcap2dora"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+arrow = { version = "55", default-features = false, features = ["ipc"] }
+clap = { version = "4", features = ["derive"] }
+mcap = { version = "0.15", features = ["zstd", "lz4"] }
+memmap2 = "0.9"
+
+[profile.release]
+lto = "thin"

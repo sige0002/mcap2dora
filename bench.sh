@@ -19,13 +19,20 @@ for f in "${FILES[@]}"; do
     # warm the page cache once so raw/decoded see identical read conditions
     cat "$f" > /dev/null
     for mode in raw decoded; do
+        # in-memory conversion (library path, nothing written)
+        echo ">>> $rel [$mode/memory]" | tee -a "$LOG" >&2
+        if ! "$BIN" drain --mode "$mode" "$f" >> "$RESULTS" 2>> "$LOG"; then
+            echo "{\"file\":\"$rel\",\"mode\":\"$mode\",\"sink\":\"memory\",\"error\":true}" >> "$RESULTS"
+            echo "!!! FAILED: $rel [$mode/memory]" | tee -a "$LOG" >&2
+        fi
+        # conversion to Arrow IPC files
         outdir=/bench_tmp/$id/$mode
         rm -rf "$outdir"
         mkdir -p "$outdir"
-        echo ">>> $rel [$mode]" | tee -a "$LOG" >&2
+        echo ">>> $rel [$mode/file]" | tee -a "$LOG" >&2
         if ! "$BIN" convert --mode "$mode" --out "$outdir" "$f" >> "$RESULTS" 2>> "$LOG"; then
-            echo "{\"file\":\"$rel\",\"mode\":\"$mode\",\"error\":true}" >> "$RESULTS"
-            echo "!!! FAILED: $rel [$mode]" | tee -a "$LOG" >&2
+            echo "{\"file\":\"$rel\",\"mode\":\"$mode\",\"sink\":\"file\",\"error\":true}" >> "$RESULTS"
+            echo "!!! FAILED: $rel [$mode/file]" | tee -a "$LOG" >&2
         fi
         rm -rf "$outdir"
     done

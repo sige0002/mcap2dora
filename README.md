@@ -125,17 +125,18 @@ docker run --rm -v $PWD:/app -v /path/to/your/rosbags:/rosbags:ro \
 
 ROS 2 bag 33個・計29.1GB・221万メッセージを1台(20コア、NVMe)で変換した結果:
 
-| モード | 合計時間 | スループット |
-|---|---:|---:|
-| raw(ファイル出力) | 37.1s | 785 MB/s |
-| decoded(ファイル出力) | 36.3s | 803 MB/s |
+| モード | 出力先 | 合計時間 | スループット |
+|---|---|---:|---:|
+| raw | ファイル | 36.8s | 791 MB/s |
+| decoded | ファイル | 37.1s | 785 MB/s |
+| raw | **in-memory** | 14.3s | **2040 MB/s** |
+| decoded | **in-memory** | 14.7s | **1984 MB/s** |
 
-データ量の大半を占める圧縮画像はどちらのモードでもバイト列コピーになるため、
-フィールド展開のコストは誤差範囲で **raw と decoded はほぼ同速**。型付き列が
-得られる decoded を推奨。
-
-書き出しを省いた in-memory 変換(`drain` サブコマンド、ライブラリ利用時と同じ
-経路)は約2.2倍速く、780MB・25万メッセージのbagで **約1750 MB/s**(0.45秒):
+- **raw と decoded はほぼ同速**: データ量の大半を占める圧縮画像はどちらの
+  モードでもバイト列コピーになるため、フィールド展開のコストは誤差範囲。
+  型付き列が得られる decoded を推奨
+- **in-memory(ライブラリ経路)はファイル出力の約2.5倍**。最大の6.7GB bagでも
+  約3秒で全デコードできる。in-memory の計測は `drain` サブコマンドで再現可能:
 
 ```bash
 docker run --rm -v /path/to/rosbags:/data:ro mcap2dora drain --mode decoded /data/xxx.mcap
